@@ -1,4 +1,5 @@
 USE DataWarehouse;
+
 --1 ) database exploration
 SELECT * FROM INFORMATION_SCHEMA.TABLES;
 
