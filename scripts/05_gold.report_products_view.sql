@@ -1,156 +1,209 @@
-/*
-===============================================================================
-Product Report
-===============================================================================
-Purpose:
-    - This report consolidates key product metrics and behaviors.
+USE DataWarehouse;
+GO
 
-Highlights:
-    1. Gathers essential fields such as product name, category,
-       sub-category, product line, and cost.
-    2. Segments products by revenue into High-Performer,
-       Mid-Range, or Low-Performer.
-    3. Aggregates product-level metrics:
-       - Total Orders
-       - Total Sales
-       - Total Quantity Sold
-       - Total Customers
-       - Product Lifespan (Months)
-    4. Calculates valuable KPIs:
-       - Recency (Months Since Last Sale)
-       - Average Selling Price
-       - Average Order Revenue (AOR)
-       - Average Monthly Revenue
-===============================================================================
-*/
 
 -- =============================================================================
 -- Create Report: gold.report_products
+-- Purpose: This report consolidates key product metrics and behaviors.
 -- =============================================================================
 
+
 IF OBJECT_ID('gold.report_products', 'V') IS NOT NULL
-    DROP VIEW gold.report_products;
+DROP VIEW gold.report_products;
 GO
+
 
 CREATE VIEW gold.report_products AS
 
+
 WITH base_query AS
 (
-/*---------------------------------------------------------------------------
-1) Base Query
----------------------------------------------------------------------------*/
-SELECT
-    f.order_number,
-    f.order_date,
-    f.customer_id,
-    f.sales,
-    f.quantity,
+    /*
+    ============================================================================
+    1. Base Query
+    Retrieves product and sales information from fact and product dimension
+    ============================================================================
+    */
 
-    p.product_id,
-    p.product_key,
-    p.product_name,
-    p.category_id,
-    p.category,
-    p.sub_category,
-    p.cost,
-    p.product_line,
-    p.start_date,
-    p.maintainance
 
-FROM gold.fact_sales AS f
-LEFT JOIN gold.dim_products AS p
-    ON f.product_key = p.product_key
+    SELECT
 
-WHERE f.order_date IS NOT NULL
+        -- Sales information
+        f.order_number,
+        f.order_date,
+        f.customer_key,
+        f.sales_amount,
+        f.quantity,
+
+
+        -- Product information
+        p.product_id,
+        p.product_key,
+        p.product_name,
+        p.category_id,
+        p.category,
+        p.subcategory,
+        p.cost,
+        p.product_line,
+        p.start_date,
+        p.maintenance
+
+
+    FROM DataWarehouse.gold.fact_sales AS f
+
+
+    LEFT JOIN DataWarehouse.gold.dim_products AS p
+
+        -- Match sales with products
+        ON f.product_key = p.product_key
+
+
+    WHERE f.order_date IS NOT NULL
 ),
+
+
 
 product_aggregations AS
 (
-/*---------------------------------------------------------------------------
-2) Product Aggregations
----------------------------------------------------------------------------*/
-SELECT
+    /*
+    ============================================================================
+    2. Product Aggregations
+    Summarizes sales performance at product level
+    ============================================================================
+    */
 
-    product_id,
-    product_key,
-    product_name,
-    category_id,
-    category,
-    sub_category,
-    cost,
-    product_line,
-    start_date,
-    maintainance,
 
-    DATEDIFF(MONTH, MIN(order_date), MAX(order_date)) AS lifespan,
+    SELECT
 
-    MAX(order_date) AS last_sale_date,
 
-    COUNT(DISTINCT order_number) AS total_orders,
+        product_id,
+        product_key,
+        product_name,
+        category_id,
+        category,
+        subcategory,
+        cost,
+        product_line,
+        start_date,
+        maintenance,
 
-    COUNT(DISTINCT customer_id) AS total_customers,
 
-    SUM(sales) AS total_sales,
+        -- Product lifespan in months
+        DATEDIFF(
+            MONTH,
+            MIN(order_date),
+            MAX(order_date)
+        ) AS lifespan,
 
-    SUM(quantity) AS total_quantity,
 
-    ROUND(
-        AVG(CAST(sales AS FLOAT) / NULLIF(quantity,0))
-    ,2) AS avg_selling_price
+        -- Latest sale date
+        MAX(order_date) AS last_sale_date,
 
-FROM base_query
 
-GROUP BY
+        -- Total number of orders
+        COUNT(DISTINCT order_number) AS total_orders,
 
-    product_id,
-    product_key,
-    product_name,
-    category_id,
-    category,
-    sub_category,
-    cost,
-    product_line,
-    start_date,
-    maintainance
+
+        -- Total customers who purchased product
+        COUNT(DISTINCT customer_key) AS total_customers,
+
+
+        -- Total revenue
+        SUM(sales_amount) AS total_sales,
+
+
+        -- Total quantity sold
+        SUM(quantity) AS total_quantity,
+
+
+        -- Average selling price
+        ROUND(
+            AVG(
+                CAST(sales_amount AS FLOAT) 
+                / NULLIF(quantity,0)
+            ),
+            2
+        ) AS avg_selling_price
+
+
+
+    FROM base_query
+
+
+    GROUP BY
+
+        product_id,
+        product_key,
+        product_name,
+        category_id,
+        category,
+        subcategory,
+        cost,
+        product_line,
+        start_date,
+        maintenance
 )
 
-/*---------------------------------------------------------------------------
-3) Final Product Report
----------------------------------------------------------------------------*/
+
+
+/*
+============================================================================
+3. Final Product Report
+Adds product segmentation and additional KPIs
+============================================================================
+*/
+
+
 SELECT
 
+
+    -- Product details
     product_id,
     product_key,
     product_name,
     category_id,
     category,
-    sub_category,
+    subcategory,
     cost,
     product_line,
     start_date,
-    maintainance,
+    maintenance,
 
+
+    -- Last sale information
     last_sale_date,
 
-    DATEDIFF(MONTH, last_sale_date, GETDATE()) AS recency_in_months,
 
+    -- Months since last sale
+    DATEDIFF(
+        MONTH,
+        last_sale_date,
+        GETDATE()
+    ) AS recency_in_months,
+
+
+    -- Product performance segment
     CASE
         WHEN total_sales > 50000 THEN 'High-Performer'
         WHEN total_sales >= 10000 THEN 'Mid-Range'
         ELSE 'Low-Performer'
     END AS product_segment,
 
+
+    -- Product lifecycle
     lifespan,
 
+
+    -- Sales metrics
     total_orders,
-
     total_sales,
-
     total_quantity,
-
     total_customers,
 
+
+    -- Pricing metric
     avg_selling_price,
+
 
     -- Average Order Revenue (AOR)
     CASE
@@ -158,10 +211,14 @@ SELECT
         ELSE total_sales / total_orders
     END AS avg_order_revenue,
 
+
     -- Average Monthly Revenue
     CASE
         WHEN lifespan = 0 THEN total_sales
         ELSE total_sales / lifespan
     END AS avg_monthly_revenue
 
+
+
 FROM product_aggregations;
+GO

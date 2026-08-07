@@ -1,177 +1,286 @@
 USE DataWarehouse;
+GO
 
---1 ) database exploration
-SELECT * FROM INFORMATION_SCHEMA.TABLES;
 
-SELECT * FROM INFORMATION_SCHEMA.COLUMNS;
+-- =====================================================
+-- 1. DATABASE EXPLORATION
+-- Check available tables and columns
+-- =====================================================
 
-SELECT * FROM INFORMATION_SCHEMA.COLUMNS
+SELECT *
+FROM DataWarehouse.INFORMATION_SCHEMA.TABLES;
+
+
+SELECT *
+FROM DataWarehouse.INFORMATION_SCHEMA.COLUMNS;
+
+
+-- Check customer table structure
+SELECT *
+FROM DataWarehouse.INFORMATION_SCHEMA.COLUMNS
 WHERE TABLE_NAME = 'dim_customers';
 
--- 2) dimension exploration
-SELECT DISTINCT country FROM gold.dim_customers;
 
-SELECT DISTINCT gender FROM gold.dim_customers;
 
-SELECT DISTINCT category, sub_category, product_name FROM gold.dim_products
-ORDER BY 1,2,3;
+-- =====================================================
+-- 2. DIMENSION EXPLORATION
+-- Understand customer and product dimensions
+-- =====================================================
 
--- 3) date exploration;
+
+-- List all available customer countries
+SELECT DISTINCT
+    country
+FROM DataWarehouse.gold.dim_customers;
+
+
+-- List all available customer genders
+SELECT DISTINCT
+    gender
+FROM DataWarehouse.gold.dim_customers;
+
+
+-- Explore product hierarchy
+-- Category -> Subcategory -> Product
+SELECT DISTINCT
+    category,
+    subcategory,
+    product_name
+FROM DataWarehouse.gold.dim_products
+ORDER BY
+    category,
+    subcategory,
+    product_name;
+
+
+
+-- =====================================================
+-- 3. DATE EXPLORATION
+-- Understand data coverage and time periods
+-- =====================================================
+
+
+-- Find sales date range
 SELECT
-	MIN(order_date) AS first_order_date,
-	MAX(order_date) AS last_order_date,
-	DATEDIFF(YEAR,MIN((order_date)),MAX(order_date)) AS order_range_year
-FROM gold.fact_sales;
+    MIN(order_date) AS first_order_date,
+    MAX(order_date) AS last_order_date,
+    DATEDIFF(
+        YEAR,
+        MIN(order_date),
+        MAX(order_date)
+    ) AS order_range_years
+FROM DataWarehouse.gold.fact_sales;
 
+
+-- Find customer birthdate range
 SELECT
-	MIN(birthdate) AS youngest_customer,
-	MAX(birthdate) AS oldest_customer
-FROM gold.dim_customers;
+    MIN(birthdate) AS oldest_customer,
+    MAX(birthdate) AS youngest_customer
+FROM DataWarehouse.gold.dim_customers;
 
+
+-- Calculate customer age
 SELECT
-	*,
-	DATEDIFF(YEAR,birthdate,GETDATE()) AS age
-FROM gold.dim_customers;
+    customer_id,
+    first_name,
+    last_name,
+    birthdate,
+    DATEDIFF(YEAR, birthdate, GETDATE()) AS age
+FROM DataWarehouse.gold.dim_customers;
 
--- 4) Measure Exploration
--- Find total sales
-SELECT SUM(sales) total_sales FROM gold.fact_sales;
 
--- Find how many items are sold
-SELECT SUM(quantity) no_of_saled_item FROM gold.fact_sales;
 
--- Find avg selling price
-SELECT AVG(price) AS avg_price FROM gold.fact_sales;
+-- =====================================================
+-- 4. MEASURE EXPLORATION
+-- Calculate overall business KPIs
+-- =====================================================
 
--- Find total number of order
-SELECT COUNT(order_number) AS total_orders FROM gold.fact_sales;
-SELECT COUNT(DISTINCT order_number) AS total_orders FROM gold.fact_sales;
 
--- Find total number of saled items
-SELECT COUNT(quantity) AS total_quantity FROM gold.fact_sales;
+-- Total revenue generated
+SELECT
+    SUM(sales_amount) AS total_sales
+FROM DataWarehouse.gold.fact_sales;
 
--- Find total number of products
-SELECT COUNT(product_key) as total_product FROM gold.dim_products;
 
-SELECT COUNT(DISTINCT product_key) as total_product FROM gold.dim_products;
+-- Total quantity sold
+SELECT
+    SUM(quantity) AS total_quantity
+FROM DataWarehouse.gold.fact_sales;
 
--- Find total number of customers
-SELECT COUNT(customer_id) as total_cust FROM gold.dim_customers;
 
--- Find total number of customers that place any order
-SELECT COUNT(DISTINCT customer_id) AS cust_orderd FROM gold.fact_sales;
+-- Average selling price
+SELECT
+    AVG(price) AS average_price
+FROM DataWarehouse.gold.fact_sales;
 
--- 5) Magnitude Exploration
 
--- Find total number of customers by countries
-SELECT country, COUNT(customer_id) total_customers FROM gold.dim_customers
+-- Total number of orders
+SELECT
+    COUNT(DISTINCT order_number) AS total_orders
+FROM DataWarehouse.gold.fact_sales;
+
+
+-- Total number of products
+SELECT
+    COUNT(DISTINCT product_key) AS total_products
+FROM DataWarehouse.gold.dim_products;
+
+
+-- Total registered customers
+SELECT
+    COUNT(DISTINCT customer_key) AS total_customers
+FROM DataWarehouse.gold.dim_customers;
+
+
+-- Customers who made purchases
+SELECT
+    COUNT(DISTINCT customer_key) AS customers_with_orders
+FROM DataWarehouse.gold.fact_sales;
+
+
+
+-- =====================================================
+-- 5. MAGNITUDE EXPLORATION
+-- Analyze business distribution
+-- =====================================================
+
+
+-- Customer count by country
+SELECT
+    country,
+    COUNT(customer_key) AS total_customers
+FROM DataWarehouse.gold.dim_customers
 GROUP BY country
 ORDER BY total_customers DESC;
 
--- Find total customer by Gender
-SELECT gender, COUNT(customer_id) AS total_customers FROM gold.dim_customers
+
+-- Customer count by gender
+SELECT
+    gender,
+    COUNT(customer_key) AS total_customers
+FROM DataWarehouse.gold.dim_customers
 GROUP BY gender
 ORDER BY total_customers DESC;
 
--- Find total product by category
-SELECT category,COUNT(product_id) total_products FROM gold.dim_products 
+
+-- Product count by category
+SELECT
+    category,
+    COUNT(product_key) AS total_products
+FROM DataWarehouse.gold.dim_products
 GROUP BY category
 ORDER BY total_products DESC;
 
--- What is the average cost in each category
-SELECT category, AVG(cost) avg_price FROM gold.dim_products
-GROUP BY category
-ORDER BY avg_price DESC;
 
--- What is the total revenue generate form each category
-select 
-	dp.category,
-	SUM(f.sales) AS total_revenue
-from gold.fact_sales AS f
-LEFT JOIN gold.dim_products AS dp
-ON f.product_key = dp.product_key
+-- Average product cost by category
+SELECT
+    category,
+    AVG(cost) AS average_cost
+FROM DataWarehouse.gold.dim_products
 GROUP BY category
+ORDER BY average_cost DESC;
+
+
+-- Revenue by product category
+SELECT
+    p.category,
+    SUM(f.sales_amount) AS total_revenue
+FROM DataWarehouse.gold.fact_sales f
+LEFT JOIN DataWarehouse.gold.dim_products p
+ON f.product_key = p.product_key
+GROUP BY p.category
 ORDER BY total_revenue DESC;
 
--- What is the total revenue generate by each customer
+
+-- Revenue generated by each customer
 SELECT
-	dc.customer_key,
-	dc.first_name,
-	dc.last_name,
-	sum(fs.sales) AS total_revenue_by_customer
-FROM gold.dim_customers AS dc
-LEFT JOIN gold.fact_sales AS fs
-ON dc.customer_id = fs.customer_id
+    c.customer_id,
+    c.first_name,
+    c.last_name,
+    SUM(f.sales_amount) AS total_revenue
+FROM DataWarehouse.gold.dim_customers c
+LEFT JOIN DataWarehouse.gold.fact_sales f
+ON c.customer_key = f.customer_key
 GROUP BY
-	customer_key,
-	first_name,
-	last_name
-ORDER BY total_revenue_by_customer DESC;
+    c.customer_id,
+    c.first_name,
+    c.last_name
+ORDER BY total_revenue DESC;
 
--- What is the distribution of items sold accross country
 
+-- Quantity sold by country
 SELECT
-	dc.country,
-	SUM(fs.quantity) as total_sales_by_country
-FROM gold.dim_customers AS dc
-LEFT JOIN gold.fact_sales AS fs
-ON dc.customer_id = fs.customer_id
-GROUP BY dc.country
-ORDER BY total_sales_by_country DESC;
+    c.country,
+    SUM(f.quantity) AS total_quantity_sold
+FROM DataWarehouse.gold.dim_customers c
+LEFT JOIN DataWarehouse.gold.fact_sales f
+ON c.customer_key = f.customer_key
+GROUP BY c.country
+ORDER BY total_quantity_sold DESC;
 
 
--- 6) Ranking Exploration
--- Which 5 product generates highest revenue
+
+-- =====================================================
+-- 6. RANKING EXPLORATION
+-- Identify best and worst performers
+-- =====================================================
+
+
+-- Top 5 products by revenue
 SELECT TOP 5
     p.product_id,
     p.product_name,
-    SUM(s.sales) AS total_rev
-FROM gold.fact_sales s
-LEFT JOIN gold.dim_products p
-    ON p.product_key = s.product_key
+    SUM(f.sales_amount) AS total_revenue
+FROM DataWarehouse.gold.fact_sales f
+LEFT JOIN DataWarehouse.gold.dim_products p
+ON f.product_key = p.product_key
 GROUP BY
     p.product_id,
     p.product_name
-ORDER BY total_rev DESC;
+ORDER BY total_revenue DESC;
 
--- what are the top 5 wrost performing product name 
+
+-- Bottom 5 products by revenue
 SELECT TOP 5
     p.product_id,
     p.product_name,
-    SUM(s.sales) AS total_rev
-FROM gold.fact_sales s
-LEFT JOIN gold.dim_products p
-    ON p.product_key = s.product_key
+    SUM(f.sales_amount) AS total_revenue
+FROM DataWarehouse.gold.fact_sales f
+LEFT JOIN DataWarehouse.gold.dim_products p
+ON f.product_key = p.product_key
 GROUP BY
     p.product_id,
     p.product_name
-ORDER BY total_rev;
+ORDER BY total_revenue ASC;
 
 
--- Find the top 10 cutomers who have generated the highest revenue
-
+-- Top 10 customers by revenue
 SELECT TOP 10
     c.customer_id,
-	c.first_name,
-    SUM(s.sales) AS total_rev
-FROM gold.fact_sales s
-LEFT JOIN gold.dim_customers c
-    ON s.customer_id = c.customer_id
+    c.first_name,
+    c.last_name,
+    SUM(f.sales_amount) AS total_revenue
+FROM DataWarehouse.gold.fact_sales f
+LEFT JOIN DataWarehouse.gold.dim_customers c
+ON f.customer_key = c.customer_key
 GROUP BY
     c.customer_id,
-	c.first_name
-ORDER BY total_rev DESC;
+    c.first_name,
+    c.last_name
+ORDER BY total_revenue DESC;
 
--- the 3 customers with fewest order placed
 
+-- Customers with the fewest orders
 SELECT TOP 3
     c.customer_id,
-	c.first_name,
-    SUM(s.sales) AS total_rev
-FROM gold.fact_sales s
-LEFT JOIN gold.dim_customers c
-    ON s.customer_id = c.customer_id
+    c.first_name,
+    c.last_name,
+    COUNT(DISTINCT f.order_number) AS total_orders
+FROM DataWarehouse.gold.fact_sales f
+LEFT JOIN DataWarehouse.gold.dim_customers c
+ON f.customer_key = c.customer_key
 GROUP BY
     c.customer_id,
-	c.first_name
-ORDER BY total_rev ASC;
+    c.first_name,
+    c.last_name
+ORDER BY total_orders ASC;

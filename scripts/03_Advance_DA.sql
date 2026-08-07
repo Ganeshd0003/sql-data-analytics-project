@@ -1,72 +1,209 @@
--- 1) Change over time
--- How have total sales changed over the years?
+USE DataWarehouse;
+GO
+
+
+-- =====================================================
+-- 1. SALES TREND ANALYSIS OVER TIME
+-- Purpose:
+-- Analyze how sales performance changes by year and month
+-- =====================================================
+
 SELECT
     YEAR(order_date) AS year,
-    DATENAME(MONTH,order_date) AS month,
-    SUM(sales) AS max_total_sales
+    DATENAME(MONTH, order_date) AS month,
+    SUM(sales_amount) AS total_sales
 FROM gold.fact_sales
 WHERE order_date IS NOT NULL
-GROUP BY YEAR(order_date),DATENAME(MONTH,order_date)
-ORDER BY year;
+GROUP BY 
+    YEAR(order_date),
+    DATENAME(MONTH, order_date)
+ORDER BY 
+    year;
 
--- sales by country
+
+
+-- =====================================================
+-- 2. SALES PERFORMANCE BY COUNTRY
+-- Purpose:
+-- Calculate total revenue generated from each country
+-- =====================================================
+
 SELECT
     c.country,
-    SUM(s.sales) AS max_total_sales
+    SUM(s.sales_amount) AS total_sales
 FROM gold.dim_customers AS c
 INNER JOIN gold.fact_sales AS s
-    ON c.customer_id = s.customer_id
-GROUP BY c.country
-ORDER BY c.country;
+    ON c.customer_key = s.customer_key
+GROUP BY 
+    c.country
+ORDER BY 
+    c.country;
 
--- which product most salesd in which country
-select * from
-(select
-    rank() over(partition by country order by max_total_sales_by_product desc) as rn,
-    t.country,
-    t.max_total_sales_by_product,t.product_namE
-from (SELECT 
-c.country,
-p.product_name,
-sum(s.sales) max_total_sales_by_product
-from
-gold.fact_sales as s
-inner join gold.dim_products as p
-    on s.product_key = p.product_key
-inner join gold.dim_customers as c
-    on s.customer_id = c.customer_id
-GROUP BY country,p.product_name)t)tt
+
+
+-- =====================================================
+-- 3. TOP SELLING PRODUCT BY COUNTRY
+-- Purpose:
+-- Identify the highest revenue product in each country
+-- =====================================================
+
+SELECT *
+FROM
+(
+    SELECT
+
+        -- Rank products inside each country by sales
+        RANK() OVER(
+            PARTITION BY country 
+            ORDER BY total_sales_by_product DESC
+        ) AS rn,
+
+        t.country,
+        t.product_name,
+        t.total_sales_by_product
+
+    FROM
+    (
+
+        -- Calculate product revenue by country
+        SELECT
+            c.country,
+            p.product_name,
+            SUM(s.sales_amount) AS total_sales_by_product
+
+        FROM gold.fact_sales AS s
+
+        INNER JOIN gold.dim_products AS p
+            ON s.product_key = p.product_key
+
+        INNER JOIN gold.dim_customers AS c
+            ON s.customer_key = c.customer_key
+
+        GROUP BY
+            c.country,
+            p.product_name
+
+    ) t
+
+) tt
+
+-- Return only the highest selling product per country
 WHERE tt.rn = 1;
 
 
--- calculate maximum sales year by country
- with cte1 as (
- SELECT
-        c.country,
-        sum(s.sales) AS max_total_sales,
-        YEAR(s.order_date) AS year
-    FROM
-    gold.fact_sales AS s
-    INNER JOIN gold.dim_customers AS c
-        ON s.customer_id = c.customer_id
-    GROUP BY country,YEAR(s.order_date)),
-    CTE2 AS (
-select RANK() OVER(PARTITION BY CTE1.COUNTRY ORDER BY CTE1.max_total_sales DESC) AS rnk,* from cte1 
-where cte1.country IN ('Germany','United States','Australia','United Kingdom','Canada','France') AND cte1.year IS NOT NULL)
-SELECT * FROM CTE2 WHERE CTE2.rnk = 1;
 
--- calculate Minimum sales year by country
- with cte1 as (
- SELECT
+-- =====================================================
+-- 4. BEST SALES YEAR BY COUNTRY
+-- Purpose:
+-- Find the year with maximum sales for selected countries
+-- =====================================================
+
+WITH cte1 AS
+(
+    -- Calculate yearly sales for each country
+    SELECT
         c.country,
-        sum(s.sales) AS min_total_sales,
+        SUM(s.sales_amount) AS total_sales,
         YEAR(s.order_date) AS year
-    FROM
-    gold.fact_sales AS s
+
+    FROM gold.fact_sales AS s
+
     INNER JOIN gold.dim_customers AS c
-        ON s.customer_id = c.customer_id
-    GROUP BY country,YEAR(s.order_date)),
-    CTE2 AS (
-select RANK() OVER(PARTITION BY CTE1.COUNTRY ORDER BY CTE1.min_total_sales ASC) AS rnk,* from cte1 
-where cte1.country IN ('Germany','United States','Australia','United Kingdom','Canada','France') AND cte1.year IS NOT NULL)
-SELECT * FROM CTE2 WHERE CTE2.rnk = 1;
+        ON s.customer_key = c.customer_key
+
+    WHERE s.order_date IS NOT NULL
+
+    GROUP BY
+        c.country,
+        YEAR(s.order_date)
+),
+
+
+cte2 AS
+(
+    -- Rank years based on highest sales per country
+    SELECT
+        RANK() OVER(
+            PARTITION BY country 
+            ORDER BY total_sales DESC
+        ) AS rnk,
+
+        *
+
+    FROM cte1
+
+    WHERE country IN 
+    (
+        'Germany',
+        'United States',
+        'Australia',
+        'United Kingdom',
+        'Canada',
+        'France'
+    )
+)
+
+
+-- Return best performing sales year
+SELECT *
+FROM cte2
+WHERE rnk = 1;
+
+
+
+-- =====================================================
+-- 5. WORST SALES YEAR BY COUNTRY
+-- Purpose:
+-- Find the year with minimum sales for selected countries
+-- =====================================================
+
+WITH cte1 AS
+(
+    -- Calculate yearly sales for each country
+    SELECT
+        c.country,
+        SUM(s.sales_amount) AS total_sales,
+        YEAR(s.order_date) AS year
+
+    FROM gold.fact_sales AS s
+
+    INNER JOIN gold.dim_customers AS c
+        ON s.customer_key = c.customer_key
+
+    WHERE s.order_date IS NOT NULL
+
+    GROUP BY
+        c.country,
+        YEAR(s.order_date)
+),
+
+
+cte2 AS
+(
+    -- Rank years based on lowest sales per country
+    SELECT
+        RANK() OVER(
+            PARTITION BY country 
+            ORDER BY total_sales ASC
+        ) AS rnk,
+
+        *
+
+    FROM cte1
+
+    WHERE country IN 
+    (
+        'Germany',
+        'United States',
+        'Australia',
+        'United Kingdom',
+        'Canada',
+        'France'
+    )
+)
+
+
+-- Return lowest performing sales year
+SELECT *
+FROM cte2
+WHERE rnk = 1;
