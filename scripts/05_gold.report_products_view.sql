@@ -18,8 +18,7 @@ CREATE VIEW gold.report_products AS
 
 WITH base_query AS
 (
-    /*
-    ============================================================================
+    /* ============================================================================
     1. Base Query
     Retrieves product and sales information from fact and product dimension
     ============================================================================
@@ -217,7 +216,6 @@ SELECT
         WHEN lifespan = 0 THEN total_sales
         ELSE total_sales / lifespan
     END AS avg_monthly_revenue
-
 
 
 FROM product_aggregations;
